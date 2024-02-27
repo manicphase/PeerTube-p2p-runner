@@ -8,7 +8,10 @@
     "node": ">=16.x"
   },
   "license": "AGPL-3.0",
-  "dependencies": {},
+  "dependencies": {
+    "async-wait-until": "^2.0.12",
+    "webtorrent": "^2.1.36"
+  },
   "devDependencies": {
     "@iarna/toml": "^2.2.5",
     "@peertube/net-ipc": "^2.2.0",
