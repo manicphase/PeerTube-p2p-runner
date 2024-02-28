@@ -15,7 +15,7 @@ import { buildFFmpegVOD, downloadInputFile, ProcessOptions, scheduleTranscodingP
 import WebTorrent from 'webtorrent'
 import { waitUntil } from 'async-wait-until'
 
-const cachefolder = "~/.pt_cache"
+
 const wt = new WebTorrent()
 let torrentList = {}
 let countDowns = {}
@@ -23,8 +23,14 @@ let countDowns = {}
 wt.on("torrent",(t) => {torrentList[t.infoHash] = t})
 logger.info("Webtorrent client initialised")
 
+function getVideoID(fullpath: string) {
+  let fileURL = new URL(fullpath)
+  let videoID = fileURL.pathname.split("/")[8]
+  return videoID
+}
 
-async function parseTorrentURL (inputURL: string) {
+
+async function parseTorrentURL (inputURL: string, destination: string) {
 
   let fileURL = new URL(inputURL)
   let videoID = fileURL.pathname.split("/")[8]
@@ -49,7 +55,7 @@ async function parseTorrentURL (inputURL: string) {
               }
               let existingHashes = wt.torrents.map(function(t) {return t.infoHash})
               if (existingHashes.indexOf(newInfohash) < 0) {
-                wt.add(magnetURI, { path: cachefolder }, function (torrent) {
+                wt.add(magnetURI, { path: destination }, function (torrent) {
                   thisTorrent = torrent
                   const interval = setInterval(function () {
                     logger.info(`Progress: ${(torrent.progress * 100).toFixed(1)}% from ${torrent.numPeers}`)
@@ -63,7 +69,7 @@ async function parseTorrentURL (inputURL: string) {
 
   })
   await waitUntil(() => thisTorrent.done, {timeout: 86000000})
-  let fileDir = `${cachefolder}/${thisTorrent.files[0].path}`
+  let fileDir = `${destination}/${thisTorrent.files[0].path}`
   logger.info(`file downloaded to ${fileDir}`)
   logger.info("DOWNLOAD DONE")
   return thisTorrent.infoHash
@@ -78,6 +84,7 @@ export async function processWebVideoTranscoding (options: ProcessOptions<Runner
   let ffmpegProgress: number
   let inputPath: string
   let infoHash: string
+  let destination: string
 
   const outputPath = join(ConfigManager.Instance.getTranscodingDirectory(), `output-${buildUUID()}.mp4`)
 
@@ -91,9 +98,12 @@ export async function processWebVideoTranscoding (options: ProcessOptions<Runner
   try {
     logger.info(`[processWebVideoTranscoding] Downloading input file ${payload.input.videoFileUrl} for web video transcoding job ${job.jobToken}`)
 
+    destination = join(ConfigManager.Instance.getTranscodingDirectory(),getVideoID(payload.input.videoFileUrl))
+    logger.info(destination)  
+
     try{
-      infoHash = await parseTorrentURL(payload.input.videoFileUrl)
-      inputPath = `${cachefolder}/${torrentList[infoHash].files[0].path}`
+      infoHash = await parseTorrentURL(payload.input.videoFileUrl, destination)
+      inputPath = `${destination}/${torrentList[infoHash].files[0].path}`
     } catch {
       logger.info("failed to get torrent. using direct download.")
       inputPath = await downloadInputFile({ url: payload.input.videoFileUrl, runnerToken, job })
@@ -130,7 +140,7 @@ export async function processWebVideoTranscoding (options: ProcessOptions<Runner
     })
   } finally {
     if (infoHash) {
-      countDowns[infoHash] = setTimeout(() => {remove(inputPath)},60000)
+      countDowns[infoHash] = setTimeout(() => {remove(destination)},60000)
       if (torrentList[infoHash]) torrentList[infoHash].destroy()
     } else {
       await remove(inputPath)
@@ -148,6 +158,7 @@ export async function processHLSTranscoding (options: ProcessOptions<RunnerJobVO
   let ffmpegProgress: number
   let inputPath: string
   let infoHash: string
+  let destination: string
 
   const uuid = buildUUID()
   const outputPath = join(ConfigManager.Instance.getTranscodingDirectory(), `${uuid}-${payload.output.resolution}.m3u8`)
@@ -163,10 +174,13 @@ export async function processHLSTranscoding (options: ProcessOptions<RunnerJobVO
 
   try {
     logger.info(`[processHLSTranscoding] Downloading input file ${payload.input.videoFileUrl} for HLS transcoding job ${job.jobToken}`)
-
+    
+    destination = join(ConfigManager.Instance.getTranscodingDirectory(),getVideoID(payload.input.videoFileUrl))
+    logger.info(destination)  
+    
     try{
-      infoHash = await parseTorrentURL(payload.input.videoFileUrl)
-      inputPath = `${cachefolder}/${torrentList[infoHash].files[0].path}`
+      infoHash = await parseTorrentURL(payload.input.videoFileUrl, destination)
+      inputPath = `${destination}/${torrentList[infoHash].files[0].path}`
     } catch {
       logger.info("failed to get torrent. using direct download.")
       inputPath = await downloadInputFile({ url: payload.input.videoFileUrl, runnerToken, job })
@@ -204,7 +218,7 @@ export async function processHLSTranscoding (options: ProcessOptions<RunnerJobVO
     })
   } finally {
     if (infoHash) {
-      countDowns[infoHash] = setTimeout(() => {remove(inputPath)},60000)
+      countDowns[infoHash] = setTimeout(() => {remove(destination)},60000)
       if (torrentList[infoHash]) torrentList[infoHash].destroy()
     } else {
       await remove(inputPath)
