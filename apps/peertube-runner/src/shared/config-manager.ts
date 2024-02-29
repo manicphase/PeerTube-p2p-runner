@@ -11,6 +11,7 @@ const paths = envPaths('peertube-runner')
 type Config = {
   jobs: {
     concurrency: number
+    responseDelay: number
   }
 
   ffmpeg: {
@@ -31,7 +32,8 @@ export class ConfigManager {
 
   private config: Config = {
     jobs: {
-      concurrency: 2
+      concurrency: 2,
+      responseDelay: 0,
     },
     ffmpeg: {
       threads: 2,
